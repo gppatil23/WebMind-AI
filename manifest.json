@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "WebMind AI",
+  "version": "1.0.0",
+  "description": "Your AI companion for understanding any webpage.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  
+  "action": {
+    "host_permissions": [
+    "http://127.0.0.1:8000/*"
+  ],
+    "default_popup": "popup/popup.html"
+  }
+}
+
