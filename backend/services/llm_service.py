@@ -86,7 +86,7 @@ def answer_question(retrieved_context: str, question: str):
 
     response = client.models.generate_content(
         model=MODEL_NAME,
-        contents=prompt
+        contents=prompt,
     )
 
     if not response.text:
