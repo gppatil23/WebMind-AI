@@ -1,5 +1,9 @@
-
 let pageData = null;
+
+let activeTabId = null;
+let chatHistory = [];
+
+const CHAT_STORAGE_PREFIX = "webmind_chat_";
 
 document.addEventListener("DOMContentLoaded", () => {
 
@@ -39,6 +43,8 @@ async function extractWebpage() {
         if (!tab?.id || !tab.url?.startsWith("http")) {
             throw new Error("This page cannot be processed.");
         }
+
+        activeTabId = tab.id;
 
         await chrome.scripting.executeScript({
             target: { tabId: tab.id },
@@ -261,6 +267,8 @@ async function extractWebpage() {
         if (!pageData?.content) {
             throw new Error("No webpage content found.");
         }
+        // Restore previous conversation for this webpage
+        await restoreChatHistory(activeTabId, pageData.url);
 
         // UPDATE PAGE INFORMATION
 
@@ -330,6 +338,9 @@ async function extractWebpage() {
 
 // STEP 2: DISPLAY CHAT MESSAGES
 
+
+// STEP 2: DISPLAY CHAT MESSAGES
+
 function addMessage(text, sender) {
 
     const chatMessages = document.getElementById("chatMessages");
@@ -358,7 +369,78 @@ function addMessage(text, sender) {
     chatMessages.scrollTop = chatMessages.scrollHeight;
 
     return message;
+}
 
+
+// STEP 2.1: CHAT HISTORY MANAGEMENT
+
+function getChatStorageKey(tabId) {
+    return `${CHAT_STORAGE_PREFIX}${tabId}`;
+}
+
+
+// Save conversation for the active tab
+async function saveChatHistory() {
+
+    if (activeTabId === null || !pageData?.url) {
+        return;
+    }
+
+    const key = getChatStorageKey(activeTabId);
+
+    await chrome.storage.session.set({
+        [key]: {
+            url: pageData.url,
+            messages: chatHistory
+        }
+    });
+}
+
+
+// Restore conversation when popup opens
+async function restoreChatHistory(tabId, currentUrl) {
+
+    const key = getChatStorageKey(tabId);
+
+    const stored = await chrome.storage.session.get(key);
+
+    const conversation = stored[key];
+
+    chatHistory = [];
+
+    // No previous conversation
+    if (!conversation) {
+        return;
+    }
+
+    // URL changed: discard old conversation
+    if (
+        conversation.url !== currentUrl ||
+        !Array.isArray(conversation.messages)
+    ) {
+        await chrome.storage.session.remove(key);
+        return;
+    }
+
+    chatHistory = conversation.messages;
+
+    const chatContainer = document.getElementById("chatMessages");
+
+    // Clear existing HTML messages
+    chatContainer.innerHTML = "";
+
+    // Restore welcome message
+    addMessage(
+        "Hello! I've analyzed this webpage. Ask me anything about its content.",
+        "ai"
+    );
+
+    // Restore previous questions and answers
+    chatHistory.forEach(message => {
+        addMessage(message.text, message.sender);
+    });
+
+    console.log("Previous chat restored:", chatHistory.length);
 }
 
 
@@ -377,7 +459,14 @@ async function sendMessage() {
 
     // DISPLAY USER QUESTION
 
+    // DISPLAY AND STORE USER QUESTION
+
     addMessage(question, "user");
+
+    chatHistory.push({
+        sender: "user",
+        text: question
+    });
 
     input.value = "";
 
@@ -393,9 +482,9 @@ async function sendMessage() {
         .classList.add("typing");
 
     try {
-
+        // Save user question before requesting AI response
+        await saveChatHistory();
         // SEND QUESTION AND WEBPAGE CONTEXT TO FASTAPI
-
 
         const response = await fetch(
             "http://127.0.0.1:8000/api/chat",
@@ -427,6 +516,14 @@ async function sendMessage() {
 
         addMessage(result.answer, "ai");
 
+        chatHistory.push({
+            sender: "ai",
+            text: result.answer
+        });
+
+        // Save completed conversation
+        await saveChatHistory();
+
 
     } catch (error) {
 
@@ -434,10 +531,17 @@ async function sendMessage() {
 
         typingMessage.remove();
 
-        addMessage(
-            error.message || "Something went wrong. Please try again.",
-            "ai"
-        );
+        const errorText =
+            error.message || "Something went wrong. Please try again.";
+
+        addMessage(errorText, "ai");
+
+        chatHistory.push({
+            sender: "ai",
+            text: errorText
+        });
+
+        await saveChatHistory();
 
     } finally {
 
