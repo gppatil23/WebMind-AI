@@ -6,13 +6,16 @@
   "permissions": [
     "activeTab",
     "scripting",
-    "storage"
+    "storage",
+    "webNavigation"
   ],
-  
-  "action": {
-    "host_permissions": [
+  "host_permissions": [
     "http://127.0.0.1:8000/*"
   ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
     "default_popup": "popup/popup.html"
   }
 }
